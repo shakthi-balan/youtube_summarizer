@@ -19,7 +19,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@captchafox/react": "^1.10.0",
-    "@daveyplate/better-auth-ui": "^3.3.15",
     "@hookform/resolvers": "^5.2.2",
     "@marsidev/react-turnstile": "^1.4.1",
     "@next/eslint-plugin-next": "^16.1.6",
