@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { motion } from "framer-motion"
@@ -11,8 +11,17 @@ import { cn } from "@/lib/utils"
 import { signIn } from "@/lib/auth-client"
 import { useAuth } from "@/hooks/useAuth"
 
-export default function LoginPage() {
+function LoginFallback() {
+  return (
+    <div className="min-h-screen gradient-soft-animated flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
+    </div>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { isAuthenticated, isLoading: authLoading, user } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -20,16 +29,27 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const callbackUrl = searchParams.get("callbackUrl")
+  const queryError = searchParams.get("error")
+
+  useEffect(() => {
+    if (queryError) {
+      setError(queryError)
+    }
+  }, [queryError])
+
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
-      if (!user.setupCompleted) {
+      if (callbackUrl?.startsWith("/")) {
+        router.replace(callbackUrl)
+      } else if (!user.setupCompleted) {
         router.replace("/setup")
       } else {
         router.replace("/")
       }
     }
-  }, [authLoading, isAuthenticated, user, router])
+  }, [authLoading, isAuthenticated, user, router, callbackUrl])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,8 +72,9 @@ export default function LoginPage() {
       // Get user from the response to check setupCompleted
       const userData = result.data?.user as { setupCompleted?: boolean } | undefined
 
-      // Redirect based on setup completion status
-      if (userData?.setupCompleted === false) {
+      if (callbackUrl?.startsWith("/")) {
+        router.push(callbackUrl)
+      } else if (userData?.setupCompleted === false) {
         router.push("/setup")
       } else {
         router.push("/")
@@ -67,20 +88,12 @@ export default function LoginPage() {
 
   // Show loading while checking auth
   if (authLoading) {
-    return (
-      <div className="min-h-screen gradient-soft-animated flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
-      </div>
-    )
+    return <LoginFallback />
   }
 
   // Don't render if already authenticated (will redirect)
   if (isAuthenticated) {
-    return (
-      <div className="min-h-screen gradient-soft-animated flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
-      </div>
-    )
+    return <LoginFallback />
   }
 
   return (
@@ -102,6 +115,7 @@ export default function LoginPage() {
                   width={40}
                   height={40}
                   className="w-full h-full object-contain"
+                  priority
                 />
               </div>
               <span className="font-display text-xl font-semibold text-slate-900">
@@ -247,5 +261,13 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   )
 }

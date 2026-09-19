@@ -40,7 +40,7 @@ Transform lengthy YouTube videos into structured, digestible summaries. YouTube 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/DevRico003/youtube_summarizer.git
+git clone https://github.com/OWNER/youtube_summarizer.git
 cd youtube_summarizer
 
 # 2. Install dependencies
@@ -53,9 +53,11 @@ cp .env.example .env
 openssl rand -hex 32      # For APP_SECRET
 openssl rand -base64 32   # For BETTER_AUTH_SECRET
 
+# Add your Supabase DATABASE_URL and DIRECT_URL from Project Settings > Database
+
 # 4. Setup database
 npx prisma generate
-npx prisma db push
+npx prisma migrate deploy
 npx prisma db seed
 
 # 5. Run development server
@@ -72,7 +74,7 @@ npm start
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/DevRico003/youtube_summarizer.git
+git clone https://github.com/OWNER/youtube_summarizer.git
 cd youtube_summarizer
 
 # 2. Configure environment
@@ -81,6 +83,8 @@ cp .env.example .env
 # Generate secrets and add to .env:
 openssl rand -hex 32      # For APP_SECRET
 openssl rand -base64 32   # For BETTER_AUTH_SECRET
+
+# Set DATABASE_URL and DIRECT_URL to your Supabase project
 
 # 3. Run with docker-compose
 docker-compose up -d
@@ -96,7 +100,8 @@ Database migrations and seeding (security questions) run automatically on first 
 | `APP_SECRET` | Yes | Secret key for encryption. Generate with `openssl rand -hex 32` |
 | `BETTER_AUTH_SECRET` | Yes | Secret for session signing. Generate with `openssl rand -base64 32` |
 | `BETTER_AUTH_URL` | No | Base URL for auth callbacks. Default: `http://localhost:3000` |
-| `DATABASE_URL` | No | SQLite database path. Default: `file:./dev.db` (auto-configured for Docker) |
+| `DATABASE_URL` | Yes | Supabase Postgres URL. On Vercel use the Transaction pooler (port 6543) |
+| `DIRECT_URL` | Yes (migrations) | Supabase direct or Session pooler URL (port 5432) |
 
 ## User Guide
 
@@ -139,17 +144,24 @@ Update your API keys anytime from the Settings page.
 - **Language**: [TypeScript](https://www.typescriptlang.org/)
 - **Authentication**: [better-auth](https://better-auth.com/) (HTTP-only cookies)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **Database**: [Prisma](https://www.prisma.io/) + SQLite
+- **Database**: [Prisma](https://www.prisma.io/) + [Supabase](https://supabase.com/) (Postgres)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 - **LLM**: [Z.AI GLM-4.7](https://z.ai/subscribe?ic=D7NHC27OHD)
 - **Transcripts**: [Supadata API](https://supadata.ai/?ref=devrico003)
 
 ## Cloud Deployment
 
+### Vercel + Supabase
+1. Create a Supabase project and copy the Database URLs (Transaction pooler + Direct/Session)
+2. Import this GitHub repo in Vercel
+3. Set `APP_SECRET`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `DATABASE_URL`, and `DIRECT_URL`
+4. Deploy — the build runs Prisma migrations and seeds security questions
+
 ### General Notes
 - Ensure `APP_SECRET` and `BETTER_AUTH_SECRET` are set as environment variables
 - Set `BETTER_AUTH_URL` to your production domain
-- SQLite database requires persistent volume storage
+- `DATABASE_URL` should be the Supabase pooler URL on Vercel (port 6543)
+- `DIRECT_URL` should be the direct or session pooler URL (port 5432)
 - Container exposes port 3000
 
 ### VPS (Docker)

@@ -152,7 +152,8 @@ For advanced configuration, set these in your `.env` file:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `APP_SECRET` | Yes | - | Encryption key for API keys |
-| `DATABASE_URL` | No | `file:./dev.db` | SQLite database path |
+| `DATABASE_URL` | Yes | - | Supabase pooled Postgres URL |
+| `DIRECT_URL` | Yes | - | Supabase direct Postgres URL |
 
 API keys can be set as environment variables instead of using the UI:
 

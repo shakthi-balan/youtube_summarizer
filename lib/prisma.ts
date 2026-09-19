@@ -1,4 +1,4 @@
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
@@ -7,20 +7,23 @@ const globalForPrisma = globalThis as unknown as {
 
 function getDatabaseUrl(): string {
   const url = process.env.DATABASE_URL;
-  if (!url) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('DATABASE_URL environment variable is required in production');
-    }
-    return 'file:./dev.db';
+  if (url) {
+    return url;
   }
-  return url;
+  // Next.js production builds import this module; a dummy URL is enough because
+  // no queries run until runtime, when DATABASE_URL must be set.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return 'postgresql://postgres:postgres@localhost:5432/postgres';
+  }
+  throw new Error('DATABASE_URL environment variable is required');
 }
 
-// Note: Prisma 7 with better-sqlite3 adapter stores DateTime as ISO 8601 strings.
-// Fresh installations work correctly. If upgrading from Prisma 6 with existing data,
-// delete the old database file or migrate DateTime columns from Unix timestamps to ISO 8601.
-const adapter = new PrismaBetterSqlite3({
-  url: getDatabaseUrl()
+const adapter = new PrismaPg({
+  connectionString: getDatabaseUrl(),
+  // Vercel serverless: keep the pool tiny so we do not exhaust Supabase connections.
+  max: process.env.VERCEL ? 1 : 10,
+  connectionTimeoutMillis: 5_000,
+  idleTimeoutMillis: 30_000,
 });
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });

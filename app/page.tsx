@@ -126,6 +126,7 @@ export default function Home() {
                   width={40}
                   height={40}
                   className="w-full h-full object-contain"
+                  priority
                 />
               </div>
               <span className="font-display text-xl font-semibold text-slate-900">

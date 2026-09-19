@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { extractVideoId } from "@/lib/youtube";
 import { fetchTranscript, TranscriptError } from "@/lib/transcript";
@@ -8,6 +9,75 @@ import { extractTopics, type ExtractedTopic } from "@/lib/topicExtraction";
 import { logApiUsage } from "@/lib/usageLogger";
 import { authenticateRequest } from "@/lib/apiAuth";
 import { checkRateLimit } from "@/lib/rateLimit";
+
+const summaryWithRelations = {
+  topics: {
+    orderBy: { order: "asc" as const },
+  },
+  transcriptSegments: {
+    orderBy: { order: "asc" as const },
+  },
+};
+
+type SummaryWithRelations = Prisma.SummaryGetPayload<{
+  include: typeof summaryWithRelations;
+}>;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
+
+async function findCachedSummary(
+  videoId: string,
+  userId: string
+): Promise<SummaryWithRelations | null> {
+  return prisma.summary.findUnique({
+    where: {
+      videoId_userId: {
+        videoId,
+        userId,
+      },
+    },
+    include: summaryWithRelations,
+  });
+}
+
+function toCompleteEvent(
+  summary: SummaryWithRelations,
+  modelUsed: ModelId,
+  source: "cache" | "generated"
+): ProgressEvent {
+  return {
+    type: "complete",
+    summary: {
+      id: summary.id,
+      videoId: summary.videoId,
+      title: summary.title,
+      content: summary.content,
+      hasTimestamps: summary.hasTimestamps,
+      topics: summary.topics.map((t) => ({
+        id: t.id,
+        title: t.title,
+        startMs: t.startMs,
+        endMs: t.endMs,
+        order: t.order,
+      })),
+      transcriptSegments: summary.transcriptSegments.map((s) => ({
+        id: s.id,
+        text: s.text,
+        offset: s.offset,
+        duration: s.duration,
+        order: s.order,
+      })),
+      modelUsed,
+      source,
+    },
+    status: "completed",
+  };
+}
 
 /**
  * Progress event types for streaming responses
@@ -62,11 +132,14 @@ export async function GET(req: NextRequest) {
   try {
     const models = await getAvailableModels(auth.userId);
     return NextResponse.json({ models });
-  } catch {
-    return NextResponse.json(
-      { error: "Failed to get available models" },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("Failed to get available models:", error);
+    // Degrade gracefully so the home page can still load during incomplete setup
+    return NextResponse.json({
+      models: [
+        { id: "glm-4.7", name: "GLM-4.7", available: false, group: "zai" },
+      ],
+    });
   }
 }
 
@@ -158,51 +231,12 @@ export async function POST(req: NextRequest) {
       }
 
       // Check cache first (per-user cache)
-      const existingSummary = await prisma.summary.findUnique({
-        where: {
-          videoId_userId: {
-            videoId,
-            userId,
-          },
-        },
-        include: {
-          topics: {
-            orderBy: { order: "asc" },
-          },
-          transcriptSegments: {
-            orderBy: { order: "asc" },
-          },
-        },
-      });
+      const existingSummary = await findCachedSummary(videoId, userId);
 
       if (existingSummary) {
-        await writeProgress({
-          type: "complete",
-          summary: {
-            id: existingSummary.id,
-            videoId: existingSummary.videoId,
-            title: existingSummary.title,
-            content: existingSummary.content,
-            hasTimestamps: existingSummary.hasTimestamps,
-            topics: existingSummary.topics.map((t) => ({
-              id: t.id,
-              title: t.title,
-              startMs: t.startMs,
-              endMs: t.endMs,
-              order: t.order,
-            })),
-            transcriptSegments: existingSummary.transcriptSegments.map((s) => ({
-              id: s.id,
-              text: s.text,
-              offset: s.offset,
-              duration: s.duration,
-              order: s.order,
-            })),
-            modelUsed: "glm-4.7", // Default for cached results
-            source: "cache",
-          },
-          status: "completed",
-        });
+        await writeProgress(
+          toCompleteEvent(existingSummary, "glm-4.7", "cache")
+        );
         await writer.close();
         return;
       }
@@ -305,65 +339,60 @@ export async function POST(req: NextRequest) {
           }))
         : [];
 
-      // Save to database
-      const savedSummary = await prisma.summary.create({
-        data: {
-          videoId,
-          userId,
-          title,
-          content: summary,
-          transcript: transcriptText,
-          hasTimestamps,
-          topics: {
-            create: topics.map((topic) => ({
-              title: topic.title,
-              startMs: topic.startMs,
-              endMs: topic.endMs,
-              order: topic.order,
-            })),
+      // Re-check cache before insert — concurrent requests may have finished while we generated
+      const summaryCreatedWhileGenerating = await findCachedSummary(
+        videoId,
+        userId
+      );
+      if (summaryCreatedWhileGenerating) {
+        await writeProgress(
+          toCompleteEvent(summaryCreatedWhileGenerating, modelUsed, "cache")
+        );
+        await writer.close();
+        return;
+      }
+
+      // Save to database (recover from race if another request inserts first)
+      let savedSummary: SummaryWithRelations;
+      try {
+        savedSummary = await prisma.summary.create({
+          data: {
+            videoId,
+            userId,
+            title,
+            content: summary,
+            transcript: transcriptText,
+            hasTimestamps,
+            topics: {
+              create: topics.map((topic) => ({
+                title: topic.title,
+                startMs: topic.startMs,
+                endMs: topic.endMs,
+                order: topic.order,
+              })),
+            },
+            transcriptSegments: {
+              create: transcriptSegmentsData,
+            },
           },
-          transcriptSegments: {
-            create: transcriptSegmentsData,
-          },
-        },
-        include: {
-          topics: {
-            orderBy: { order: "asc" },
-          },
-          transcriptSegments: {
-            orderBy: { order: "asc" },
-          },
-        },
-      });
+          include: summaryWithRelations,
+        });
+      } catch (createError) {
+        if (isUniqueConstraintError(createError)) {
+          const racedSummary = await findCachedSummary(videoId, userId);
+          if (racedSummary) {
+            await writeProgress(
+              toCompleteEvent(racedSummary, modelUsed, "cache")
+            );
+            await writer.close();
+            return;
+          }
+        }
+        throw createError;
+      }
 
       // Return complete result
-      await writeProgress({
-        type: "complete",
-        summary: {
-          id: savedSummary.id,
-          videoId: savedSummary.videoId,
-          title: savedSummary.title,
-          content: savedSummary.content,
-          hasTimestamps: savedSummary.hasTimestamps,
-          topics: savedSummary.topics.map((t) => ({
-            id: t.id,
-            title: t.title,
-            startMs: t.startMs,
-            endMs: t.endMs,
-            order: t.order,
-          })),
-          transcriptSegments: savedSummary.transcriptSegments.map((s) => ({
-            id: s.id,
-            text: s.text,
-            offset: s.offset,
-            duration: s.duration,
-            order: s.order,
-          })),
-          modelUsed,
-          source: "generated",
-        },
-        status: "completed",
-      });
+      await writeProgress(toCompleteEvent(savedSummary, modelUsed, "generated"));
     } catch (error) {
       console.error("Summarize error:", error);
 

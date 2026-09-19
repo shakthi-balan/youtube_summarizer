@@ -52,12 +52,15 @@ export function ModelDropdown({
   useEffect(() => {
     async function fetchModelAvailability() {
       try {
-        const token = localStorage.getItem("token")
         const response = await fetch("/api/summarize", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         })
+
+        if (response.status === 401) {
+          setModels([])
+          return
+        }
+
         const data = await response.json()
         setModels(data.models || [])
 
@@ -82,7 +85,7 @@ export function ModelDropdown({
     }
 
     fetchModelAvailability()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps — fetch once on mount
 
   // Close dropdown when clicking outside
   useEffect(() => {

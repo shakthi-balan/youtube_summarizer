@@ -52,10 +52,18 @@ export default function SettingsPage() {
 
     try {
       const response = await fetch("/api/settings/api-keys", {
-        credentials: "include", // Include cookies for auth
+        credentials: "include",
       })
 
-      if (!response.ok) throw new Error("Failed to fetch API keys")
+      if (response.status === 401) {
+        router.replace("/login?callbackUrl=%2Fsettings&error=Your+session+expired.+Please+sign+in+again.")
+        return
+      }
+
+      if (!response.ok) {
+        setApiKeysError("Failed to load API keys")
+        return
+      }
 
       const data = await response.json()
       setApiKeys(data.keys)
@@ -76,7 +84,7 @@ export default function SettingsPage() {
     } finally {
       setApiKeysLoading(false)
     }
-  }, [])
+  }, [router])
 
   const saveApiKey = async (service: ApiKeyService) => {
     const state = apiKeyStates[service]
@@ -194,11 +202,15 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    if (isAuthenticated) fetchApiKeys()
-  }, [isAuthenticated, fetchApiKeys])
+    if (!isLoading && isAuthenticated) {
+      fetchApiKeys()
+    }
+  }, [isAuthenticated, isLoading, fetchApiKeys])
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.push("/login")
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/login?callbackUrl=%2Fsettings")
+    }
   }, [isAuthenticated, isLoading, router])
 
   if (isLoading) {

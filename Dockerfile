@@ -35,7 +35,7 @@ RUN npx prisma generate
 # Build Next.js application
 ENV NEXT_TELEMETRY_DISABLED=1
 # Provide a dummy DATABASE_URL for build time - the real URL is set at runtime
-ENV DATABASE_URL="file:./build-placeholder.db"
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 # Provide a dummy BETTER_AUTH_SECRET for build time - the real secret is set at runtime
 ENV BETTER_AUTH_SECRET="build-time-placeholder-not-used-in-production"
 RUN npm run build
@@ -50,11 +50,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install sqlite for database operations and npm for prisma CLI
-RUN apk add --no-cache libc6-compat sqlite
+# Install openssl for Prisma and npm for prisma CLI
+RUN apk add --no-cache libc6-compat openssl
 
 # Install Prisma CLI globally for database migrations
-RUN npm install -g prisma@7.3.0
+RUN npm install -g prisma@7.9.1
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
@@ -72,10 +72,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-
-# Create data directory for SQLite database persistence
-RUN mkdir -p /app/data
+COPY --from=builder /app/node_modules/pg ./node_modules/pg
+COPY --from=builder /app/node_modules/@prisma/adapter-pg ./node_modules/@prisma/adapter-pg
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./

@@ -47,7 +47,7 @@ This guide covers how to install and run YouTube Summarizer V2 using Docker or d
 
 The `docker-compose.yml` provides:
 
-- **Automatic database persistence**: SQLite data stored in a Docker volume
+- **Supabase Postgres**: set `DATABASE_URL` and `DIRECT_URL` in `.env`
 - **Health checks**: Automatic container restart on failure
 - **Production optimizations**: NODE_ENV=production, standalone Next.js build
 
@@ -56,18 +56,8 @@ The `docker-compose.yml` provides:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `APP_SECRET` | Yes | Encryption key for API keys (min 16 characters) |
-| `DATABASE_URL` | No | Database path (defaults to `/app/data/dev.db` in Docker) |
-
-### Volumes
-
-The `youtube-summarizer-data` volume persists:
-- SQLite database (`dev.db`)
-- All user data, summaries, and preferences
-
-To backup your data:
-```bash
-docker cp youtube-summarizer:/app/data ./backup
-```
+| `DATABASE_URL` | Yes | Supabase pooled Postgres URL |
+| `DIRECT_URL` | Yes | Supabase direct Postgres URL for migrations |
 
 ## Manual Docker Build
 
@@ -84,8 +74,8 @@ If you prefer to build and run manually:
      --name youtube-summarizer \
      -p 3000:3000 \
      -e APP_SECRET="your-secure-secret" \
-     -e DATABASE_URL="file:/app/data/dev.db" \
-     -v youtube-summarizer-data:/app/data \
+     -e DATABASE_URL="postgresql://..." \
+     -e DIRECT_URL="postgresql://..." \
      youtube-summarizer
    ```
 

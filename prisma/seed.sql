@@ -1,7 +1,7 @@
--- Seed Security Questions for better-auth password reset
--- This file is used by docker-entrypoint.sh
+-- Seed Security Questions for password reset
+-- Used by docker-entrypoint.sh and local setup
 
-INSERT OR IGNORE INTO SecurityQuestion (id, question) VALUES
+INSERT INTO "SecurityQuestion" (id, question) VALUES
   ('sq_01', 'What was the name of your first pet?'),
   ('sq_02', 'What city were you born in?'),
   ('sq_03', 'What was the name of your elementary school?'),
@@ -16,4 +16,5 @@ INSERT OR IGNORE INTO SecurityQuestion (id, question) VALUES
   ('sq_12', 'What is the name of your favorite sports team?'),
   ('sq_13', 'What was your favorite food as a child?'),
   ('sq_14', 'What is the name of the hospital where you were born?'),
-  ('sq_15', 'What is the name of your favorite book?');
+  ('sq_15', 'What is the name of your favorite book?')
+ON CONFLICT (question) DO NOTHING;

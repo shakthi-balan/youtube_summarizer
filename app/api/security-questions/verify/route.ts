@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcrypt"
+import { checkRateLimit } from "@/lib/rateLimit"
+import {
+  createResetToken,
+  getClientIdentifier,
+  passwordResetIdentifier,
+} from "@/lib/securityQuestions"
 
 interface VerifyAnswer {
   questionId: string
   answer: string
 }
+
+const GENERIC_VERIFY_ERROR = "Invalid email or security answers"
 
 /**
  * POST /api/security-questions/verify
@@ -14,10 +22,22 @@ interface VerifyAnswer {
  */
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(`sq-verify:${getClientIdentifier(request)}`, 5, 60 * 1000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((rateLimit.retryAfterMs || 60000) / 1000)),
+          },
+        }
+      )
+    }
+
     const body = await request.json()
     const { email, answers } = body as { email: string; answers: VerifyAnswer[] }
 
-    // Validate input
     if (!email || !answers || answers.length !== 2) {
       return NextResponse.json(
         { error: "Email and exactly 2 answers are required" },
@@ -25,41 +45,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find user by email (case-insensitive)
+    const normalizedEmail = email.toLowerCase().trim()
+
     const user = await prisma.user.findFirst({
       where: {
         email: {
-          equals: email.toLowerCase(),
+          equals: normalizedEmail,
         },
       },
     })
 
-    // Generic error to prevent user enumeration
-    if (!user) {
-      // Add delay to prevent timing attacks
+    // Always burn some time on failure paths to reduce timing leaks
+    const failDelay = async () => {
       await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 500))
+    }
+
+    if (!user) {
+      await failDelay()
       return NextResponse.json(
-        { error: "Invalid email or security answers" },
+        { error: GENERIC_VERIFY_ERROR },
         { status: 401 }
       )
     }
 
-    // Get user's security questions
     const userQuestions = await prisma.userSecurityQuestion.findMany({
       where: { userId: user.id },
     })
 
     if (userQuestions.length < 3) {
-      // User hasn't set up security questions
+      await failDelay()
       return NextResponse.json(
-        { error: "Security questions not set up for this account" },
-        { status: 400 }
+        { error: GENERIC_VERIFY_ERROR },
+        { status: 401 }
       )
     }
 
-    // Verify answers
     let correctCount = 0
     for (const answer of answers) {
+      if (!answer?.questionId || typeof answer.answer !== "string") {
+        continue
+      }
       const userQuestion = userQuestions.find((q) => q.questionId === answer.questionId)
       if (userQuestion) {
         const isCorrect = await bcrypt.compare(
@@ -72,27 +97,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Require 2 correct answers
     if (correctCount < 2) {
+      await failDelay()
       return NextResponse.json(
-        { error: "Invalid email or security answers" },
+        { error: GENERIC_VERIFY_ERROR },
         { status: 401 }
       )
     }
 
-    // Generate a temporary reset token (stored in verification table)
-    const resetToken = crypto.randomUUID()
+    const { token: resetToken, tokenHash } = createResetToken()
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+    const identifier = passwordResetIdentifier(normalizedEmail)
 
-    // Delete any existing tokens for this email before creating a new one
+    // Delete any existing password-reset tokens for this email before creating a new one
     await prisma.verification.deleteMany({
-      where: { identifier: email.toLowerCase() },
+      where: { identifier },
     })
 
     await prisma.verification.create({
       data: {
-        identifier: email.toLowerCase(),
-        value: resetToken,
+        identifier,
+        value: tokenHash,
         expiresAt,
       },
     })

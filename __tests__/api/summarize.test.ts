@@ -187,14 +187,16 @@ describe('Summarize API Integration Tests', () => {
       });
     });
 
-    it('should return 500 when getAvailableModels fails', async () => {
+    it('should degrade gracefully when getAvailableModels fails', async () => {
       mockedGetAvailableModels.mockRejectedValue(new Error('Failed to check models'));
 
       const response = await GET(createGetRequest());
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to get available models');
+      expect(response.status).toBe(200);
+      expect(data.models).toEqual([
+        { id: 'glm-4.7', name: 'GLM-4.7', available: false, group: 'zai' },
+      ]);
     });
   });
 
@@ -710,6 +712,54 @@ describe('Summarize API Integration Tests', () => {
       const errorEvent = events.find((e: StreamEvent) => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect((errorEvent as ErrorEvent).error).toContain('Database write error');
+    });
+
+    it('should return existing summary when concurrent create hits unique constraint', async () => {
+      const { Prisma } = await import('@prisma/client');
+      const uniqueError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`videoId`,`userId`)',
+        { code: 'P2002', clientVersion: 'test', meta: { modelName: 'Summary' } }
+      );
+
+      const existingSummary = {
+        id: 'race-winner-id',
+        videoId: 'dbErrorTest',
+        title: 'Existing Summary',
+        content: 'Already saved by concurrent request',
+        transcript: 'Content.',
+        hasTimestamps: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        topics: [],
+        transcriptSegments: [
+          {
+            id: 'seg-1',
+            text: 'Content.',
+            offset: 0,
+            duration: 5000,
+            order: 0,
+            summaryId: 'race-winner-id',
+            createdAt: new Date(),
+          },
+        ],
+      };
+
+      // Miss cache initially, then hit unique on create, then load the winner
+      (mockedPrisma.summary.findUnique as jest.Mock)
+        .mockResolvedValueOnce(null) // initial cache check
+        .mockResolvedValueOnce(null) // re-check before create
+        .mockResolvedValueOnce(existingSummary); // recovery after P2002
+      (mockedPrisma.summary.create as jest.Mock).mockRejectedValue(uniqueError);
+
+      const request = createRequest({ url: videoUrl });
+      const response = await POST(request);
+      const events = await parseStreamResponse(response);
+
+      const completeEvent = events.find((e: StreamEvent) => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect((completeEvent as CompleteEvent).summary.id).toBe('race-winner-id');
+      expect((completeEvent as CompleteEvent).summary.source).toBe('cache');
+      expect(events.find((e: StreamEvent) => e.type === 'error')).toBeUndefined();
     });
 
     it('should return error when cache check fails', async () => {

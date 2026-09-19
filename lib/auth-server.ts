@@ -27,10 +27,15 @@ export function validatePassword(password: string): { valid: boolean; error?: st
   return { valid: true }
 }
 
+const betterAuthUrl = process.env.BETTER_AUTH_URL || "http://localhost:3000"
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
-    provider: "sqlite",
+    provider: "postgresql",
   }),
+
+  baseURL: betterAuthUrl,
+  secret: process.env.BETTER_AUTH_SECRET,
 
   emailAndPassword: {
     enabled: true,
@@ -80,9 +85,7 @@ export const auth = betterAuth({
     useSecureCookies: process.env.NODE_ENV === "production",
   },
 
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL || "http://localhost:3000",
-  ],
+  trustedOrigins: [betterAuthUrl],
 
   databaseHooks: {
     session: {

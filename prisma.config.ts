@@ -5,8 +5,8 @@ export default {
     seed: 'npx tsx prisma/seed.ts',
   },
   datasource: {
-    // Use process.env instead of env() to allow builds without DATABASE_URL
-    // (e.g., during Docker image build where DB connection isn't needed)
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    // Prisma CLI (migrate/push) should use the direct Supabase connection.
+    // Runtime Prisma Client uses DATABASE_URL (pooled) via lib/prisma.ts.
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/postgres',
   },
 }

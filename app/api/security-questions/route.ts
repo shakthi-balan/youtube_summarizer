@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { ensureSecurityQuestionsSeeded } from "@/lib/securityQuestions"
 
 /**
  * GET /api/security-questions
@@ -7,7 +8,7 @@ import { prisma } from "@/lib/prisma"
  */
 export async function GET() {
   try {
-    const questions = await prisma.securityQuestion.findMany({
+    let questions = await prisma.securityQuestion.findMany({
       select: {
         id: true,
         question: true,
@@ -16,6 +17,20 @@ export async function GET() {
         question: "asc",
       },
     })
+
+    // Fresh installs may skip `prisma db seed` — backfill defaults if empty
+    if (questions.length === 0) {
+      await ensureSecurityQuestionsSeeded()
+      questions = await prisma.securityQuestion.findMany({
+        select: {
+          id: true,
+          question: true,
+        },
+        orderBy: {
+          question: "asc",
+        },
+      })
+    }
 
     return NextResponse.json({ questions })
   } catch (error) {

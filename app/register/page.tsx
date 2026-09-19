@@ -32,6 +32,8 @@ export default function RegisterPage() {
 
   // Step 2: Security Questions
   const [availableQuestions, setAvailableQuestions] = useState<SecurityQuestion[]>([])
+  const [questionsLoading, setQuestionsLoading] = useState(true)
+  const [questionsError, setQuestionsError] = useState("")
   const [selectedQuestions, setSelectedQuestions] = useState<{ id: string; answer: string }[]>([
     { id: "", answer: "" },
     { id: "", answer: "" },
@@ -60,14 +62,27 @@ export default function RegisterPage() {
   // Fetch security questions
   useEffect(() => {
     const fetchQuestions = async () => {
+      setQuestionsLoading(true)
+      setQuestionsError("")
       try {
         const response = await fetch("/api/security-questions")
         const data = await response.json()
-        if (data.questions) {
-          setAvailableQuestions(data.questions)
+        if (!response.ok) {
+          setQuestionsError(data.error || "Failed to load security questions")
+          setAvailableQuestions([])
+          return
         }
-      } catch (error) {
-        console.error("Failed to fetch security questions:", error)
+        if (!data.questions?.length) {
+          setQuestionsError("No security questions are available. Please try again shortly.")
+          setAvailableQuestions([])
+          return
+        }
+        setAvailableQuestions(data.questions)
+      } catch (err) {
+        console.error("Failed to fetch security questions:", err)
+        setQuestionsError("Failed to load security questions. Please refresh and try again.")
+      } finally {
+        setQuestionsLoading(false)
       }
     }
     fetchQuestions()
@@ -88,8 +103,42 @@ export default function RegisterPage() {
       return
     }
 
+    if (questionsLoading) {
+      setError("Security questions are still loading. Please wait a moment.")
+      return
+    }
+
+    if (availableQuestions.length < 3) {
+      setError(questionsError || "Security questions are unavailable. Please refresh and try again.")
+      return
+    }
+
     // Proceed to security questions step
     setStep("security")
+  }
+
+  const setupSecurityQuestions = async (): Promise<{ ok: boolean; error?: string }> => {
+    const securityResponse = await fetch("/api/security-questions/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        answers: selectedQuestions.map((q) => ({
+          questionId: q.id,
+          answer: q.answer,
+        })),
+      }),
+    })
+
+    if (securityResponse.ok) {
+      return { ok: true }
+    }
+
+    const securityData = await securityResponse.json().catch(() => ({}))
+    return {
+      ok: false,
+      error: securityData.error || "Failed to save security questions",
+    }
   }
 
   // Step 2: Create account with security questions
@@ -126,24 +175,19 @@ export default function RegisterPage() {
         return
       }
 
-      // Then, set up security questions
-      const securityResponse = await fetch("/api/security-questions/setup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // Include cookies for auth
-        body: JSON.stringify({
-          answers: selectedQuestions.map((q) => ({
-            questionId: q.id,
-            answer: q.answer,
-          })),
-        }),
-      })
+      // Session cookie may not be immediately available — retry once after a short delay
+      let setupResult = await setupSecurityQuestions()
+      if (!setupResult.ok) {
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        setupResult = await setupSecurityQuestions()
+      }
 
-      if (!securityResponse.ok) {
-        const securityData = await securityResponse.json()
-        console.error("Security questions setup failed:", securityData)
-        // Account was created but security questions failed
-        // Still redirect to setup, they can set security questions later
+      if (!setupResult.ok) {
+        console.error("Security questions setup failed:", setupResult.error)
+        setError(
+          "Account created, but security questions could not be saved. Please sign in and set them up before using password recovery."
+        )
+        return
       }
 
       // Redirect to setup wizard for API key configuration
@@ -200,6 +244,7 @@ export default function RegisterPage() {
                   width={40}
                   height={40}
                   className="w-full h-full object-contain"
+                  priority
                 />
               </div>
               <span className="font-display text-xl font-semibold text-slate-900">
@@ -384,55 +429,68 @@ export default function RegisterPage() {
                   </div>
 
                   <form onSubmit={handleSecuritySubmit} className="space-y-4">
-                    {error && (
+                    {(error || questionsError) && (
                       <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 border border-red-100"
                       >
                         <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                        <span className="text-sm">{error}</span>
+                        <span className="text-sm">{error || questionsError}</span>
                       </motion.div>
                     )}
 
-                    {[0, 1, 2].map((index) => (
-                      <div key={index} className="space-y-2 p-3 bg-slate-50 rounded-xl">
-                        <label className="text-sm font-medium text-slate-700">
-                          Question {index + 1}
-                        </label>
-                        <select
-                          value={selectedQuestions[index].id}
-                          onChange={(e) => updateSelectedQuestion(index, "id", e.target.value)}
-                          className={cn(
-                            "w-full h-10 px-3 rounded-lg",
-                            "bg-white border border-slate-200",
-                            "text-slate-900 text-sm",
-                            "focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                          )}
-                          required
-                        >
-                          <option value="">Select a question</option>
-                          {availableQuestions.map((q) => (
-                            <option key={q.id} value={q.id} disabled={selectedQuestions.some((sq, i) => i !== index && sq.id === q.id)}>
-                              {q.question}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={selectedQuestions[index].answer}
-                          onChange={(e) => updateSelectedQuestion(index, "answer", e.target.value)}
-                          placeholder="Your answer"
-                          className={cn(
-                            "w-full h-10 px-3 rounded-lg",
-                            "bg-white border border-slate-200",
-                            "text-slate-900 placeholder:text-slate-400 text-sm",
-                            "focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                          )}
-                          required
-                        />
+                    {questionsLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span className="text-sm">Loading security questions...</span>
                       </div>
-                    ))}
+                    ) : (
+                      [0, 1, 2].map((index) => (
+                        <div key={index} className="space-y-2 p-3 bg-slate-50 rounded-xl">
+                          <label className="text-sm font-medium text-slate-700">
+                            Question {index + 1}
+                          </label>
+                          <select
+                            value={selectedQuestions[index].id}
+                            onChange={(e) => updateSelectedQuestion(index, "id", e.target.value)}
+                            className={cn(
+                              "w-full h-10 px-3 rounded-lg",
+                              "bg-white border border-slate-200",
+                              "text-slate-900 text-sm",
+                              "focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            )}
+                            required
+                            disabled={availableQuestions.length === 0}
+                          >
+                            <option value="">Select a question</option>
+                            {availableQuestions.map((q) => (
+                              <option
+                                key={q.id}
+                                value={q.id}
+                                disabled={selectedQuestions.some((sq, i) => i !== index && sq.id === q.id)}
+                              >
+                                {q.question}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={selectedQuestions[index].answer}
+                            onChange={(e) => updateSelectedQuestion(index, "answer", e.target.value)}
+                            placeholder="Your answer"
+                            className={cn(
+                              "w-full h-10 px-3 rounded-lg",
+                              "bg-white border border-slate-200",
+                              "text-slate-900 placeholder:text-slate-400 text-sm",
+                              "focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            )}
+                            required
+                            disabled={availableQuestions.length === 0}
+                          />
+                        </div>
+                      ))
+                    )}
 
                     <div className="flex gap-3 pt-2">
                       <button
@@ -445,7 +503,7 @@ export default function RegisterPage() {
                       </button>
                       <motion.button
                         type="submit"
-                        disabled={isLoading}
+                        disabled={isLoading || questionsLoading || availableQuestions.length < 3}
                         className="flex-1 relative overflow-hidden group rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.99 }}

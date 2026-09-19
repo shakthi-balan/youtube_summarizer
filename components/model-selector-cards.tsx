@@ -56,7 +56,15 @@ export function ModelSelectorCards({
   useEffect(() => {
     async function fetchModelAvailability() {
       try {
-        const response = await fetch("/api/summarize")
+        const response = await fetch("/api/summarize", {
+          credentials: "include",
+        })
+
+        if (response.status === 401) {
+          setModels([])
+          return
+        }
+
         const data = await response.json()
         setModels(data.models || [])
 
@@ -81,7 +89,7 @@ export function ModelSelectorCards({
     }
 
     fetchModelAvailability()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Group models by provider group
   const groupedModels = useMemo(() => {

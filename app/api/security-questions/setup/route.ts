@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     if (existingUserQuestions.length > 0) {
       return NextResponse.json(
-        { error: "Security questions already set up. Use the update endpoint to modify." },
+        { error: "Security questions already set up for this account." },
         { status: 400 }
       )
     }

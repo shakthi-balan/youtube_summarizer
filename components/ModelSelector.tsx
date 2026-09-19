@@ -57,9 +57,17 @@ export function ModelSelector({
   useEffect(() => {
     async function fetchModelAvailability() {
       try {
-        const response = await fetch('/api/summarize');
-        const data = await response.json();
-        setModels(data.models || []);
+        const response = await fetch("/api/summarize", {
+          credentials: "include",
+        })
+
+        if (response.status === 401) {
+          setModels([])
+          return
+        }
+
+        const data = await response.json()
+        setModels(data.models || [])
 
         // Auto-select first available model if no value set or current value is unavailable
         if (data.models?.length > 0) {
@@ -79,7 +87,7 @@ export function ModelSelector({
     }
 
     fetchModelAvailability();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedModel = models.find(m => m.id === value);
   const showThinkingMode = value === 'glm-4.7' && onThinkingModeChange;

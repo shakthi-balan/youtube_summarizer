@@ -1,13 +1,14 @@
 import { prisma } from "./prisma";
 import { encrypt, decrypt } from "./encryption";
+import { hasAppSecret } from "./appConfig";
 
 /**
  * Gets the APP_SECRET from environment variables
  * @throws Error if APP_SECRET is not configured
  */
 function getAppSecret(): string {
-  const secret = process.env.APP_SECRET;
-  if (!secret) {
+  const secret = process.env.APP_SECRET?.trim();
+  if (!secret || !hasAppSecret()) {
     throw new Error("APP_SECRET environment variable is not configured");
   }
   return secret;
@@ -24,6 +25,11 @@ export async function getUserApiKey(
   userId: string,
   service: string
 ): Promise<string | null> {
+  // Avoid 500s from callers (e.g. model listing) when setup/env is incomplete
+  if (!hasAppSecret()) {
+    return null;
+  }
+
   const secret = getAppSecret();
 
   const apiKey = await prisma.userApiKey.findUnique({

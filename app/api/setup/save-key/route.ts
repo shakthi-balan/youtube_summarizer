@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
     // Check if APP_SECRET is configured
     if (!hasAppSecret()) {
       return NextResponse.json(
-        { error: "APP_SECRET is not configured. Please complete Step 1 first." },
+        {
+          error:
+            "APP_SECRET is not configured in .env. Add APP_SECRET (openssl rand -hex 32), restart the server, then try again.",
+        },
         { status: 400 }
       );
     }

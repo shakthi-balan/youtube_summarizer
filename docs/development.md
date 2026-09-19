@@ -34,13 +34,15 @@ This guide covers how to set up a local development environment for YouTube Summ
 5. Edit `.env`:
    ```env
    APP_SECRET=your-generated-secret
-   DATABASE_URL="file:./dev.db"
+   DATABASE_URL="postgresql://..."
+   DIRECT_URL="postgresql://..."
    ```
 
 6. Set up the database:
    ```bash
    npx prisma generate
-   npx prisma db push
+   npx prisma migrate deploy
+   npx prisma db seed
    ```
 
 7. Start the development server:
@@ -126,8 +128,7 @@ npx prisma migrate dev --name your-migration-name
 
 ### Reset the database
 ```bash
-rm prisma/dev.db
-npx prisma db push
+npx prisma migrate reset
 ```
 
 ### Update Prisma client
@@ -246,7 +247,8 @@ curl http://localhost:3000/api/preferences \
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `APP_SECRET` | Yes | Encryption key for API keys (min 16 chars) |
-| `DATABASE_URL` | No | SQLite path (default: `file:./dev.db`) |
+| `DATABASE_URL` | Yes | Supabase pooled Postgres URL |
+| `DIRECT_URL` | Yes | Supabase direct Postgres URL for Prisma CLI |
 
 Optional API keys (can be set via UI instead):
 - `SUPADATA_API_KEY`
@@ -262,11 +264,8 @@ Optional API keys (can be set via UI instead):
 npx prisma generate
 ```
 
-### "Database locked" errors
-Stop any other processes using the database:
-```bash
-lsof prisma/dev.db
-```
+### Database connection errors
+Confirm `DATABASE_URL` and `DIRECT_URL` are set to your Supabase project and that the password is URL-encoded.
 
 ### TypeScript errors after schema change
 ```bash

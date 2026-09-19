@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { checkRateLimit } from "@/lib/rateLimit"
+import { getClientIdentifier } from "@/lib/securityQuestions"
+
+const GENERIC_LOOKUP_MESSAGE =
+  "If an account exists for this email with recovery enabled, security questions will be shown."
 
 /**
  * POST /api/security-questions/user
@@ -8,36 +13,48 @@ import { prisma } from "@/lib/prisma"
  */
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(`sq-user:${getClientIdentifier(request)}`, 5, 60 * 1000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((rateLimit.retryAfterMs || 60000) / 1000)),
+          },
+        }
+      )
+    }
+
     const body = await request.json()
     const { email } = body as { email: string }
 
-    if (!email) {
+    if (!email || typeof email !== "string") {
       return NextResponse.json(
         { error: "Email is required" },
         { status: 400 }
       )
     }
 
-    // Find user by email (case-insensitive)
+    // Constant-ish delay to reduce timing/user enumeration signals
+    const delayMs = 300 + Math.random() * 300
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+
     const user = await prisma.user.findFirst({
       where: {
         email: {
-          equals: email.toLowerCase(),
+          equals: email.toLowerCase().trim(),
         },
       },
     })
 
-    // Generic error to prevent user enumeration
-    // Add delay to prevent timing attacks
     if (!user) {
-      await new Promise((resolve) => setTimeout(resolve, 300 + Math.random() * 300))
       return NextResponse.json(
-        { error: "If this email exists, security questions will be displayed" },
+        { error: GENERIC_LOOKUP_MESSAGE },
         { status: 404 }
       )
     }
 
-    // Get user's security questions with the actual question text
     const userQuestions = await prisma.userSecurityQuestion.findMany({
       where: { userId: user.id },
       include: {
@@ -54,13 +71,13 @@ export async function POST(request: NextRequest) {
     })
 
     if (userQuestions.length < 3) {
+      // Same response as unknown email to avoid account-state enumeration
       return NextResponse.json(
-        { error: "Security questions not set up for this account" },
-        { status: 400 }
+        { error: GENERIC_LOOKUP_MESSAGE },
+        { status: 404 }
       )
     }
 
-    // Return questions without revealing which ones are needed for verification
     const questions = userQuestions.map((uq) => ({
       id: uq.question.id,
       question: uq.question.question,

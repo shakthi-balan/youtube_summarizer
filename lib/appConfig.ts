@@ -13,13 +13,21 @@ function getAppSecret(): string {
   return secret;
 }
 
+const PLACEHOLDER_SECRET_PATTERNS = [
+  /^your-secure-secret-here$/i,
+  /^your-.*-here$/i,
+  /^changeme$/i,
+  /^secret$/i,
+]
+
 /**
  * Checks if the APP_SECRET environment variable is configured
- * @returns true if APP_SECRET exists and is not empty
+ * @returns true if APP_SECRET exists, is non-empty, and is not a placeholder
  */
 export function hasAppSecret(): boolean {
-  const secret = process.env.APP_SECRET;
-  return !!secret && secret.length > 0;
+  const secret = process.env.APP_SECRET?.trim()
+  if (!secret) return false
+  return !PLACEHOLDER_SECRET_PATTERNS.some((pattern) => pattern.test(secret))
 }
 
 /**

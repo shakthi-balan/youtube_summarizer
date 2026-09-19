@@ -93,6 +93,12 @@ export default function SetupWizard() {
     }
   }
 
+  const redirectToLogin = (message?: string) => {
+    const params = new URLSearchParams({ callbackUrl: "/setup" })
+    if (message) params.set("error", message)
+    router.replace(`/login?${params.toString()}`)
+  }
+
   // Save Supadata API key and proceed to next step
   const handleSaveSupadata = async () => {
     setSupadataSaving(true)
@@ -109,6 +115,11 @@ export default function SetupWizard() {
       })
 
       const data = await response.json()
+
+      if (response.status === 401) {
+        redirectToLogin("Your session expired. Please sign in again to continue setup.")
+        return
+      }
 
       if (!response.ok) {
         setSupadataError(data.error || `Failed to save API key (${response.status})`)
@@ -150,8 +161,14 @@ export default function SetupWizard() {
         body: JSON.stringify({ service: "zai", apiKey: zaiKey }),
       })
       const data = await response.json()
-      if (!data.success && !data.skipped) {
-        setStep2Error("Failed to save Z.AI API key")
+
+      if (response.status === 401) {
+        redirectToLogin("Your session expired. Please sign in again to continue setup.")
+        return
+      }
+
+      if (!response.ok || (!data.success && !data.skipped)) {
+        setStep2Error(data.error || "Failed to save Z.AI API key")
         setStep2Saving(false)
         return
       }
@@ -167,12 +184,17 @@ export default function SetupWizard() {
 
       const completeData = await completeResponse.json()
 
+      if (completeResponse.status === 401) {
+        redirectToLogin("Your session expired. Please sign in again to continue setup.")
+        return
+      }
+
       if (completeData.success) {
         // Update local auth state
         await updateSetupCompleted(true)
         router.push("/")
       } else {
-        setStep2Error("Failed to complete setup")
+        setStep2Error(completeData.error || "Failed to complete setup")
       }
     } catch {
       setStep2Error("Failed to save API keys")
