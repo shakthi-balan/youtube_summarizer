@@ -1,5 +1,5 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "prisma generate && prisma migrate deploy && node prisma/run-seed.mjs && next build"
+  "buildCommand": "node prisma/vercel-build.mjs"
 }

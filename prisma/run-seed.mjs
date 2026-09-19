@@ -2,8 +2,10 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import pg from "pg"
+import { applyDatabaseEnv, getDirectUrl, getPooledUrl } from "./db-env.mjs"
 
-const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL
+applyDatabaseEnv()
+const connectionString = getDirectUrl() || getPooledUrl()
 
 if (!connectionString) {
   console.error("DATABASE_URL or DIRECT_URL is required to seed the database")

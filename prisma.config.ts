@@ -1,12 +1,29 @@
-export default {
-  schema: 'prisma/schema.prisma',
+import "dotenv/config"
+import { defineConfig } from "prisma/config"
+
+function firstEnv(...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+}
+
+const datasourceUrl =
+  firstEnv(
+    "DIRECT_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "POSTGRES_URL",
+    "DATABASE_URL",
+    "POSTGRES_PRISMA_URL"
+  ) ?? "postgresql://postgres:postgres@localhost:5432/postgres"
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
   migrations: {
-    path: 'prisma/migrations',
-    seed: 'npx tsx prisma/seed.ts',
+    path: "prisma/migrations",
+    seed: "npx tsx prisma/seed.ts",
   },
   datasource: {
-    // Prisma CLI (migrate/push) should use the direct Supabase connection.
-    // Runtime Prisma Client uses DATABASE_URL (pooled) via lib/prisma.ts.
-    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/postgres',
+    url: datasourceUrl,
   },
-}
+})

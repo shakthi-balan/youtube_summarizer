@@ -2,7 +2,12 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "@prisma/client"
 import { DEFAULT_SECURITY_QUESTIONS } from "../lib/securityQuestionsData"
 
-const connectionString = process.env.DATABASE_URL ?? process.env.DIRECT_URL
+const connectionString =
+  process.env.DIRECT_URL?.trim() ||
+  process.env.POSTGRES_URL_NON_POOLING?.trim() ||
+  process.env.DATABASE_URL?.trim() ||
+  process.env.POSTGRES_PRISMA_URL?.trim() ||
+  process.env.POSTGRES_URL?.trim()
 
 if (!connectionString) {
   throw new Error("DATABASE_URL or DIRECT_URL is required to seed the database")
