@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { pgClientConfig } from '../prisma/db-env.mjs';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -31,8 +32,12 @@ function getDatabaseUrl(): string {
   throw new Error('DATABASE_URL environment variable is required');
 }
 
+const connectionString = getDatabaseUrl();
+const pgConfig = pgClientConfig(connectionString);
+
 const adapter = new PrismaPg({
-  connectionString: getDatabaseUrl(),
+  connectionString: pgConfig.connectionString,
+  ssl: pgConfig.ssl,
   // Vercel serverless: keep the pool tiny so we do not exhaust Supabase connections.
   max: process.env.VERCEL ? 1 : 10,
   connectionTimeoutMillis: 5_000,

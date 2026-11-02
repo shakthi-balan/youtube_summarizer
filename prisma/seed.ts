@@ -1,19 +1,21 @@
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "@prisma/client"
 import { DEFAULT_SECURITY_QUESTIONS } from "../lib/securityQuestionsData"
+import { applyDatabaseEnv, getDirectUrl, getPooledUrl, pgClientConfig } from "./db-env.mjs"
 
-const connectionString =
-  process.env.DIRECT_URL?.trim() ||
-  process.env.POSTGRES_URL_NON_POOLING?.trim() ||
-  process.env.DATABASE_URL?.trim() ||
-  process.env.POSTGRES_PRISMA_URL?.trim() ||
-  process.env.POSTGRES_URL?.trim()
+applyDatabaseEnv()
+
+const connectionString = getDirectUrl() || getPooledUrl()
 
 if (!connectionString) {
   throw new Error("DATABASE_URL or DIRECT_URL is required to seed the database")
 }
 
-const adapter = new PrismaPg({ connectionString })
+const pgConfig = pgClientConfig(connectionString)
+const adapter = new PrismaPg({
+  connectionString: pgConfig.connectionString,
+  ssl: pgConfig.ssl,
+})
 const prisma = new PrismaClient({ adapter })
 
 async function main() {
